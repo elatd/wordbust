@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="64" fill="#FFF900"/>
+  <rect x="56" y="56" width="400" height="400" rx="32" fill="none" stroke="#FF004F" stroke-width="24"/>
+  <circle cx="256" cy="320" r="24" fill="#FF004F"/>
+  <rect x="180" y="380" width="152" height="16" rx="8" fill="#FF004F"/>
+  <text x="256" y="200" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="64" fill="#000">WORD</text>
+  <text x="256" y="270" text-anchor="middle" font-family="monospace" font-weight="bold" font-size="64" fill="#000">BUST</text>
+</svg>

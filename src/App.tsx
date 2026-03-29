@@ -17,8 +17,6 @@ import {
   playWin,
 } from './audio.ts';
 
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
 const PADDLE_WIDTH = 100;
 const PADDLE_HEIGHT = 10;
 const BALL_RADIUS = 6;
@@ -70,12 +68,12 @@ type Particle = {
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'start' | 'playing' | 'gameover' | 'won'>('start');
-  
+
   // Use refs for game state to avoid re-running useEffect
   const scoreRef = useRef(0);
   const livesRef = useRef(3);
   const gameStateRef = useRef<'start' | 'playing' | 'gameover' | 'won'>('start');
-  
+
   // Sync state to ref
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -87,47 +85,54 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Prepare foreground text
-    const prepared = prepareWithSegments(TEXT_PARAGRAPH, FONT);
-    const layout = layoutWithLines(prepared, CANVAS_WIDTH - 100, LINE_HEIGHT);
+    // Mutable canvas dimensions that track the screen
+    let cw = window.innerWidth;
+    let ch = window.innerHeight;
+    let bottomInset = 0; // safe area inset for mobile browser nav
 
-    // Prepare background text
+    // Prepare text measurements (font-dependent, not size-dependent)
+    const prepared = prepareWithSegments(TEXT_PARAGRAPH, FONT);
     const bgPrepared = prepareWithSegments(BG_TEXT_PARAGRAPH, BG_FONT);
-    const bgLayout = layoutWithLines(bgPrepared, CANVAS_WIDTH - 40, 18);
 
     let bricks: Brick[] = [];
     let bgWords: BgWord[] = [];
     let particles: Particle[] = [];
-    
-    // Initialize background words
-    let bgStartY = 20;
-    for (const line of bgLayout.lines) {
-      let currentX = 20;
-      for (let i = line.start.segmentIndex; i < line.end.segmentIndex; i++) {
-        const segmentText = bgPrepared.segments[i];
-        const segmentWidth = bgPrepared.widths[i];
-        if (segmentText.trim().length > 0) {
-          bgWords.push({
-            x: currentX,
-            y: bgStartY,
-            originalX: currentX,
-            originalY: bgStartY,
-            targetX: currentX,
-            targetY: bgStartY,
-            text: segmentText,
-          });
+    let startBtnHover = false;
+    let startBtnPressed = false;
+
+    const initBgWords = () => {
+      bgWords = [];
+      const bgLayout = layoutWithLines(bgPrepared, cw - 40, 18);
+      let bgStartY = 20;
+      for (const line of bgLayout.lines) {
+        let currentX = 20;
+        for (let i = line.start.segmentIndex; i < line.end.segmentIndex; i++) {
+          const segmentText = bgPrepared.segments[i];
+          const segmentWidth = bgPrepared.widths[i];
+          if (segmentText.trim().length > 0) {
+            bgWords.push({
+              x: currentX,
+              y: bgStartY,
+              originalX: currentX,
+              originalY: bgStartY,
+              targetX: currentX,
+              targetY: bgStartY,
+              text: segmentText,
+            });
+          }
+          currentX += segmentWidth;
         }
-        currentX += segmentWidth;
+        bgStartY += 18;
       }
-      bgStartY += 18;
-    }
+    };
 
     const initBricks = () => {
       bricks = [];
       particles = [];
+      const layout = layoutWithLines(prepared, cw - 100, LINE_HEIGHT);
       let startY = 80;
       for (const line of layout.lines) {
-        let currentX = (CANVAS_WIDTH - line.width) / 2;
+        let currentX = (cw - line.width) / 2;
         for (let i = line.start.segmentIndex; i < line.end.segmentIndex; i++) {
           const segmentText = prepared.segments[i];
           const segmentWidth = prepared.widths[i];
@@ -146,49 +151,107 @@ export default function App() {
         startY += LINE_HEIGHT;
       }
     };
-    
-    initBricks();
+
+    const resizeCanvas = () => {
+      const dpr = window.devicePixelRatio || 1;
+
+      // Use the smallest reported height to avoid content behind browser chrome.
+      // window.innerHeight on iOS includes area behind bottom bar,
+      // but document.documentElement.clientHeight respects actual CSS viewport.
+      // visualViewport.height is accurate when available and the page isn't zoomed.
+      const vv = window.visualViewport;
+      const candidates = [window.innerHeight, document.documentElement.clientHeight];
+      if (vv) candidates.push(vv.height);
+      cw = vv ? vv.width : window.innerWidth;
+      ch = Math.min(...candidates);
+
+      canvas.width = cw * dpr;
+      canvas.height = ch * dpr;
+      canvas.style.width = `${cw}px`;
+      canvas.style.height = `${ch}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Read safe-area-inset-bottom (notch / home indicator)
+      const sabStr = getComputedStyle(document.documentElement).getPropertyValue('--sab').trim();
+      bottomInset = parseFloat(sabStr) || 0;
+
+      // Re-layout background words for new width
+      initBgWords();
+
+      // Re-layout bricks only if not currently playing (don't disrupt active game)
+      if (gameStateRef.current !== 'playing') {
+        initBricks();
+      }
+
+      // Reposition paddle above bottom safe area
+      paddle.y = ch - bottomInset - 40;
+      paddle.x = Math.min(paddle.x, cw - paddle.width);
+    };
+
+    const initAll = () => {
+      resizeCanvas();
+      initBricks();
+    };
 
     let paddle = {
-      x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2,
-      y: CANVAS_HEIGHT - 40,
+      x: cw / 2 - PADDLE_WIDTH / 2,
+      y: ch - bottomInset - 40,
       width: PADDLE_WIDTH,
       height: PADDLE_HEIGHT,
       vx: 0,
     };
 
     let ball = {
-      x: CANVAS_WIDTH / 2,
-      y: CANVAS_HEIGHT - 60,
-      vx: 1.5, // Slower ball
+      x: cw / 2,
+      y: ch - bottomInset - 60,
+      vx: 1.5,
       vy: -1.5,
       radius: BALL_RADIUS,
       history: [] as {x: number, y: number, r: number}[],
     };
 
+    initAll();
+
     let animationId: number;
     let isLeftPressed = false;
     let isRightPressed = false;
 
+    // Start button geometry helpers (always computed from current cw/ch)
+    const btnX = () => cw / 2;
+    const btnY = () => ch / 2 + 60;
+    const BTN_RADIUS = 50;
+
+    const isInsideStartBtn = (cx: number, cy: number) => {
+      const dx = cx - btnX();
+      const dy = cy - btnY();
+      return dx * dx + dy * dy <= BTN_RADIUS * BTN_RADIUS;
+    };
+
+    const startGame = () => {
+      if (gameStateRef.current === 'playing') return;
+      initAudio();
+      const wasOver = gameStateRef.current === 'gameover' || gameStateRef.current === 'won';
+      setGameState('playing');
+      startMusic();
+      if (wasOver) {
+        initBricks();
+        scoreRef.current = 0;
+        livesRef.current = 3;
+        ball.x = cw / 2;
+        ball.y = ch - bottomInset - 60;
+        ball.vx = 1.5;
+        ball.vy = -1.5;
+        ball.history = [];
+        paddle.x = cw / 2 - PADDLE_WIDTH / 2;
+        paddle.y = ch - bottomInset - 40;
+      }
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') isLeftPressed = true;
       if (e.key === 'ArrowRight') isRightPressed = true;
-      if (e.key === ' ' && gameStateRef.current !== 'playing') {
-        initAudio();
-        setGameState('playing');
-        startMusic();
-        if (gameStateRef.current === 'gameover' || gameStateRef.current === 'won') {
-          // Reset game
-          initBricks();
-          scoreRef.current = 0;
-          livesRef.current = 3;
-          ball.x = CANVAS_WIDTH / 2;
-          ball.y = CANVAS_HEIGHT - 60;
-          ball.vx = 1.5;
-          ball.vy = -1.5;
-          ball.history = [];
-          paddle.x = CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2;
-        }
+      if (e.key === ' ') {
+        startGame();
       }
     };
 
@@ -197,16 +260,70 @@ export default function App() {
       if (e.key === 'ArrowRight') isRightPressed = false;
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
+    // Helper to convert screen coordinates to canvas coordinates
+    const screenToCanvas = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect();
-      const scaleX = CANVAS_WIDTH / rect.width;
-      const mouseX = (e.clientX - rect.left) * scaleX;
-      paddle.x = Math.max(0, Math.min(mouseX - paddle.width / 2, CANVAS_WIDTH - paddle.width));
+      return {
+        x: ((clientX - rect.left) / rect.width) * cw,
+        y: ((clientY - rect.top) / rect.height) * ch,
+      };
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const { x, y } = screenToCanvas(e.clientX, e.clientY);
+      if (gameStateRef.current === 'playing') {
+        canvas.style.cursor = 'none';
+        paddle.x = Math.max(0, Math.min(x - paddle.width / 2, cw - paddle.width));
+      } else {
+        startBtnHover = isInsideStartBtn(x, y);
+        canvas.style.cursor = startBtnHover ? 'pointer' : 'default';
+      }
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      if (gameStateRef.current === 'playing') return;
+      const { x, y } = screenToCanvas(e.clientX, e.clientY);
+      if (isInsideStartBtn(x, y)) {
+        startGame();
+      }
+    };
+
+    // Touch support for mobile
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      if (gameStateRef.current !== 'playing') return;
+      const touch = e.touches[0];
+      const { x } = screenToCanvas(touch.clientX, touch.clientY);
+      paddle.x = Math.max(0, Math.min(x - paddle.width / 2, cw - paddle.width));
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const { x, y } = screenToCanvas(touch.clientX, touch.clientY);
+      if (gameStateRef.current !== 'playing') {
+        if (isInsideStartBtn(x, y)) {
+          startBtnPressed = true;
+          startGame();
+        }
+      } else {
+        paddle.x = Math.max(0, Math.min(x - paddle.width / 2, cw - paddle.width));
+      }
+    };
+
+    const handleTouchEnd = () => {
+      startBtnPressed = false;
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('resize', resizeCanvas);
+    window.visualViewport?.addEventListener('resize', resizeCanvas);
     canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('click', handleClick);
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd);
 
     const update = () => {
       if (gameStateRef.current !== 'playing') return;
@@ -214,14 +331,14 @@ export default function App() {
       // Move paddle
       if (isLeftPressed) paddle.x -= 7;
       if (isRightPressed) paddle.x += 7;
-      
+
       const BORDER = 4;
-      paddle.x = Math.max(BORDER, Math.min(paddle.x, CANVAS_WIDTH - paddle.width - BORDER));
+      paddle.x = Math.max(BORDER, Math.min(paddle.x, cw - paddle.width - BORDER));
 
       // Record ball history for tail (sputtering effect)
       if (Math.random() > 0.3) {
-        ball.history.push({ 
-          x: ball.x + (Math.random() - 0.5) * 8, 
+        ball.history.push({
+          x: ball.x + (Math.random() - 0.5) * 8,
           y: ball.y + (Math.random() - 0.5) * 8,
           r: ball.radius * (0.5 + Math.random() * 0.8)
         });
@@ -239,8 +356,8 @@ export default function App() {
         ball.x = ball.radius + BORDER;
         ball.vx = -ball.vx;
         playWallBounce();
-      } else if (ball.x + ball.radius > CANVAS_WIDTH - BORDER) {
-        ball.x = CANVAS_WIDTH - ball.radius - BORDER;
+      } else if (ball.x + ball.radius > cw - BORDER) {
+        ball.x = cw - ball.radius - BORDER;
         ball.vx = -ball.vx;
         playWallBounce();
       }
@@ -250,8 +367,8 @@ export default function App() {
         playWallBounce();
       }
 
-      // Bottom collision (lose life)
-      if (ball.y + ball.radius > CANVAS_HEIGHT) {
+      // Bottom collision (lose life) — above the safe area
+      if (ball.y + ball.radius > ch - bottomInset) {
         livesRef.current -= 1;
         if (livesRef.current <= 0) {
           setGameState('gameover');
@@ -282,7 +399,7 @@ export default function App() {
         // Add some english based on where it hit the paddle
         const hitPoint = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
         ball.vx = hitPoint * 2.5; // Max horizontal speed
-        
+
         // Ensure minimum vertical speed so it doesn't bounce horizontally forever
         if (Math.abs(ball.vy) < 1) {
             ball.vy = -1;
@@ -292,7 +409,7 @@ export default function App() {
       // Brick collision
       let activeBricks = 0;
       let hitBrick = false;
-      
+
       for (const brick of bricks) {
         if (!brick.active) continue;
         activeBricks++;
@@ -307,21 +424,21 @@ export default function App() {
           ) {
             brick.active = false;
             hitBrick = true;
-            
+
             // Determine bounce direction based on overlap
             const overlapLeft = (ball.x + ball.radius) - brick.x;
             const overlapRight = (brick.x + brick.width) - (ball.x - ball.radius);
             const overlapTop = (ball.y + ball.radius) - (brick.y - brick.height);
             const overlapBottom = brick.y - (ball.y - ball.radius);
-            
+
             const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
-            
+
             if (minOverlap === overlapTop || minOverlap === overlapBottom) {
               ball.vy = -ball.vy;
             } else {
               ball.vx = -ball.vx;
             }
-            
+
             scoreRef.current += 10;
             playBrickExplosion();
 
@@ -359,10 +476,10 @@ export default function App() {
       for (const bgWord of bgWords) {
         const dx = bgWord.x - ball.x;
         // Adjust y since text is drawn from bottom
-        const dy = (bgWord.y - 9) - ball.y; 
+        const dy = (bgWord.y - 9) - ball.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const maxDist = 80;
-        
+
         if (dist < maxDist) {
           const force = (maxDist - dist) / maxDist;
           // Push away from ball
@@ -373,7 +490,7 @@ export default function App() {
           bgWord.targetX = bgWord.originalX;
           bgWord.targetY = bgWord.originalY;
         }
-        
+
         // Spring physics for smooth return
         bgWord.x += (bgWord.targetX - bgWord.x) * 0.15;
         bgWord.y += (bgWord.targetY - bgWord.y) * 0.15;
@@ -389,7 +506,7 @@ export default function App() {
     const draw = () => {
       // Clear background
       ctx.fillStyle = COLORS.bg;
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.fillRect(0, 0, cw, ch);
 
       // Draw background text
       ctx.font = BG_FONT;
@@ -399,10 +516,17 @@ export default function App() {
         ctx.fillText(bgWord.text, bgWord.x, bgWord.y);
       }
 
-      // Draw border
+      // Draw border (bottom edge raised above safe area)
+      const playAreaBottom = ch - bottomInset;
       ctx.strokeStyle = COLORS.accent;
       ctx.lineWidth = 4;
-      ctx.strokeRect(2, 2, CANVAS_WIDTH - 4, CANVAS_HEIGHT - 4);
+      ctx.strokeRect(2, 2, cw - 4, playAreaBottom - 4);
+
+      // Fill safe area below play area with background
+      if (bottomInset > 0) {
+        ctx.fillStyle = COLORS.bg;
+        ctx.fillRect(0, playAreaBottom, cw, bottomInset);
+      }
 
       // Draw bricks (text)
       ctx.font = FONT;
@@ -460,38 +584,74 @@ export default function App() {
       ctx.font = 'bold 20px monospace';
       ctx.textBaseline = 'top';
       ctx.fillText(`SCORE: ${scoreRef.current}`, 20, 20);
-      ctx.fillText(`LIVES: ${'♥'.repeat(livesRef.current)}`, CANVAS_WIDTH - 150, 20);
+      ctx.fillText(`LIVES: ${'♥'.repeat(livesRef.current)}`, cw - 150, 20);
+
+      // Draw start button helper
+      const drawStartButton = (label: string, subtitle: string) => {
+        ctx.fillStyle = 'rgba(255, 249, 0, 0.85)';
+        ctx.fillRect(0, 0, cw, ch);
+
+        // Title
+        ctx.fillStyle = COLORS.text;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 40px monospace';
+        ctx.fillText(label, cw / 2, ch / 2 - 50);
+
+        const bx = btnX();
+        const by = btnY();
+
+        // Button shadow
+        ctx.beginPath();
+        ctx.arc(bx, by + 4, BTN_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(180, 0, 40, 0.5)';
+        ctx.fill();
+
+        // Button body
+        const btnScale = startBtnPressed ? 0.92 : startBtnHover ? 1.05 : 1;
+        const r = BTN_RADIUS * btnScale;
+        const gradient = ctx.createRadialGradient(
+          bx - r * 0.3, by - r * 0.3, r * 0.1,
+          bx, by, r,
+        );
+        gradient.addColorStop(0, '#FF3366');
+        gradient.addColorStop(0.7, '#FF004F');
+        gradient.addColorStop(1, '#CC003F');
+        ctx.beginPath();
+        ctx.arc(bx, by, r, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // Button highlight
+        ctx.beginPath();
+        ctx.arc(bx - r * 0.2, by - r * 0.2, r * 0.45, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fill();
+
+        // Play triangle
+        const triSize = r * 0.45;
+        ctx.beginPath();
+        ctx.moveTo(bx - triSize * 0.4, by - triSize * 0.6);
+        ctx.lineTo(bx - triSize * 0.4, by + triSize * 0.6);
+        ctx.lineTo(bx + triSize * 0.6, by);
+        ctx.closePath();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+
+        // Subtitle below button
+        ctx.fillStyle = COLORS.text;
+        ctx.font = 'bold 16px monospace';
+        ctx.fillText(subtitle, cw / 2, by + BTN_RADIUS + 30);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+      };
 
       if (gameStateRef.current === 'start') {
-        ctx.fillStyle = 'rgba(255, 249, 0, 0.8)';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.fillStyle = COLORS.text;
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 40px monospace';
-        ctx.fillText('PRETEXT BREAKER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-        ctx.font = 'bold 20px monospace';
-        ctx.fillText('Press SPACE to Start', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
-        ctx.textAlign = 'left';
+        drawStartButton('PRETEXT BREAKER', 'Tap or press SPACE');
       } else if (gameStateRef.current === 'gameover') {
-        ctx.fillStyle = 'rgba(255, 249, 0, 0.8)';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.fillStyle = COLORS.text;
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 40px monospace';
-        ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-        ctx.font = 'bold 20px monospace';
-        ctx.fillText('Press SPACE to Restart', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
-        ctx.textAlign = 'left';
+        drawStartButton('GAME OVER', 'Tap to Restart');
       } else if (gameStateRef.current === 'won') {
-        ctx.fillStyle = 'rgba(255, 249, 0, 0.8)';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.fillStyle = COLORS.text;
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 40px monospace';
-        ctx.fillText('YOU WIN!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-        ctx.font = 'bold 20px monospace';
-        ctx.fillText('Press SPACE to Play Again', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
-        ctx.textAlign = 'left';
+        drawStartButton('YOU WIN!', 'Tap to Play Again');
       }
     };
 
@@ -507,25 +667,37 @@ export default function App() {
       cancelAnimationFrame(animationId);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('resize', resizeCanvas);
+      window.visualViewport?.removeEventListener('resize', resizeCanvas);
       canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('click', handleClick);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchend', handleTouchEnd);
     };
   }, []);
 
   return (
     <div
-      className="w-screen h-screen flex items-center justify-center overflow-hidden"
-      style={{ backgroundColor: COLORS.bg }}
+      className="overflow-hidden"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: COLORS.bg,
+      }}
     >
       <canvas
         ref={canvasRef}
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
-        className="block cursor-none"
+        className="block"
         style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
           backgroundColor: COLORS.bg,
-          width: '100vw',
-          height: '100vh',
-          objectFit: 'contain',
+          touchAction: 'none',
         }}
       />
     </div>
