@@ -20,8 +20,9 @@ import {
 const PADDLE_WIDTH = 100;
 const PADDLE_HEIGHT = 10;
 const BALL_RADIUS = 6;
-const LINE_HEIGHT = 40;
-const FONT = 'bold 32px monospace';
+const BASE_FONT_SIZE = 32;
+const BASE_LINE_HEIGHT = 40;
+const BASE_WIDTH = 800; // Reference width for scaling
 const BG_FONT = '14px monospace';
 
 const COLORS = {
@@ -90,8 +91,20 @@ export default function App() {
     let ch = window.innerHeight;
     let bottomInset = 0; // safe area inset for mobile browser nav
 
-    // Prepare text measurements (font-dependent, not size-dependent)
-    const prepared = prepareWithSegments(TEXT_PARAGRAPH, FONT);
+    // Dynamic font sizing based on canvas width
+    let fontSize = BASE_FONT_SIZE;
+    let lineHeight = BASE_LINE_HEIGHT;
+    let font = `bold ${fontSize}px monospace`;
+
+    const updateFontSize = () => {
+      const scale = Math.max(0.5, Math.min(1.5, cw / BASE_WIDTH));
+      fontSize = Math.round(BASE_FONT_SIZE * scale);
+      lineHeight = Math.round(BASE_LINE_HEIGHT * scale);
+      font = `bold ${fontSize}px monospace`;
+    };
+
+    // Prepare text measurements (font-dependent, re-prepared on resize)
+    let prepared = prepareWithSegments(TEXT_PARAGRAPH, font);
     const bgPrepared = prepareWithSegments(BG_TEXT_PARAGRAPH, BG_FONT);
 
     let bricks: Brick[] = [];
@@ -129,7 +142,9 @@ export default function App() {
     const initBricks = () => {
       bricks = [];
       particles = [];
-      const layout = layoutWithLines(prepared, cw - 100, LINE_HEIGHT);
+      updateFontSize();
+      prepared = prepareWithSegments(TEXT_PARAGRAPH, font);
+      const layout = layoutWithLines(prepared, cw - 100, lineHeight);
       let startY = 80;
       for (const line of layout.lines) {
         let currentX = (cw - line.width) / 2;
@@ -141,14 +156,14 @@ export default function App() {
               x: currentX,
               y: startY,
               width: segmentWidth,
-              height: LINE_HEIGHT,
+              height: lineHeight,
               text: segmentText,
               active: true,
             });
           }
           currentX += segmentWidth;
         }
-        startY += LINE_HEIGHT;
+        startY += lineHeight;
       }
     };
 
@@ -529,7 +544,7 @@ export default function App() {
       }
 
       // Draw bricks (text)
-      ctx.font = FONT;
+      ctx.font = font;
       ctx.textBaseline = 'bottom';
       for (const brick of bricks) {
         if (brick.active) {
@@ -539,6 +554,7 @@ export default function App() {
       }
 
       // Draw particles
+      ctx.font = font;
       for (const p of particles) {
         ctx.save();
         ctx.translate(p.x, p.y);
