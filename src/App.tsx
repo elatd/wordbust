@@ -5,6 +5,17 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { prepareWithSegments, layoutWithLines } from './pretext/layout.ts';
+import {
+  initAudio,
+  startMusic,
+  stopMusic,
+  playPaddleBounce,
+  playBrickExplosion,
+  playWallBounce,
+  playLoseLife,
+  playGameOver,
+  playWin,
+} from './audio.ts';
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -163,7 +174,9 @@ export default function App() {
       if (e.key === 'ArrowLeft') isLeftPressed = true;
       if (e.key === 'ArrowRight') isRightPressed = true;
       if (e.key === ' ' && gameStateRef.current !== 'playing') {
+        initAudio();
         setGameState('playing');
+        startMusic();
         if (gameStateRef.current === 'gameover' || gameStateRef.current === 'won') {
           // Reset game
           initBricks();
@@ -186,7 +199,8 @@ export default function App() {
 
     const handleMouseMove = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
+      const scaleX = CANVAS_WIDTH / rect.width;
+      const mouseX = (e.clientX - rect.left) * scaleX;
       paddle.x = Math.max(0, Math.min(mouseX - paddle.width / 2, CANVAS_WIDTH - paddle.width));
     };
 
@@ -224,13 +238,16 @@ export default function App() {
       if (ball.x - ball.radius < BORDER) {
         ball.x = ball.radius + BORDER;
         ball.vx = -ball.vx;
+        playWallBounce();
       } else if (ball.x + ball.radius > CANVAS_WIDTH - BORDER) {
         ball.x = CANVAS_WIDTH - ball.radius - BORDER;
         ball.vx = -ball.vx;
+        playWallBounce();
       }
       if (ball.y - ball.radius < BORDER) {
         ball.y = ball.radius + BORDER;
         ball.vy = -ball.vy;
+        playWallBounce();
       }
 
       // Bottom collision (lose life)
@@ -238,7 +255,10 @@ export default function App() {
         livesRef.current -= 1;
         if (livesRef.current <= 0) {
           setGameState('gameover');
+          stopMusic();
+          playGameOver();
         } else {
+          playLoseLife();
           // Reset ball
           ball.x = paddle.x + paddle.width / 2;
           ball.y = paddle.y - ball.radius - 5;
@@ -258,6 +278,7 @@ export default function App() {
       ) {
         ball.vy = -Math.abs(ball.vy);
         ball.y = paddle.y - ball.radius; // Prevent sticking
+        playPaddleBounce();
         // Add some english based on where it hit the paddle
         const hitPoint = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
         ball.vx = hitPoint * 2.5; // Max horizontal speed
@@ -302,6 +323,7 @@ export default function App() {
             }
             
             scoreRef.current += 10;
+            playBrickExplosion();
 
             // Create explosion particles
             for (let i = 0; i < brick.text.length; i++) {
@@ -359,6 +381,8 @@ export default function App() {
 
       if (activeBricks === 0 && !hitBrick) {
         setGameState('won');
+        stopMusic();
+        playWin();
       }
     };
 
@@ -401,9 +425,17 @@ export default function App() {
         ctx.restore();
       }
 
-      // Draw paddle
+      // Draw paddle (pill / rounded rectangle)
       ctx.fillStyle = COLORS.accent;
-      ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+      const pRadius = paddle.height / 2;
+      ctx.beginPath();
+      ctx.moveTo(paddle.x + pRadius, paddle.y);
+      ctx.lineTo(paddle.x + paddle.width - pRadius, paddle.y);
+      ctx.arc(paddle.x + paddle.width - pRadius, paddle.y + pRadius, pRadius, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(paddle.x + pRadius, paddle.y + paddle.height);
+      ctx.arc(paddle.x + pRadius, paddle.y + pRadius, pRadius, Math.PI / 2, -Math.PI / 2);
+      ctx.closePath();
+      ctx.fill();
 
       // Draw ball tail
       for (let i = 0; i < ball.history.length; i++) {
@@ -480,16 +512,22 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#111] flex items-center justify-center p-4">
-      <div className="relative shadow-2xl">
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          className="block max-w-full h-auto cursor-none"
-          style={{ backgroundColor: COLORS.bg }}
-        />
-      </div>
+    <div
+      className="w-screen h-screen flex items-center justify-center overflow-hidden"
+      style={{ backgroundColor: COLORS.bg }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
+        className="block cursor-none"
+        style={{
+          backgroundColor: COLORS.bg,
+          width: '100vw',
+          height: '100vh',
+          objectFit: 'contain',
+        }}
+      />
     </div>
   );
 }
