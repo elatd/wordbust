@@ -5,6 +5,17 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { prepareWithSegments, layoutWithLines } from './pretext/layout.ts';
+import {
+  initAudio,
+  startMusic,
+  stopMusic,
+  playPaddleBounce,
+  playBrickExplosion,
+  playWallBounce,
+  playLoseLife,
+  playGameOver,
+  playWin,
+} from './audio.ts';
 
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
@@ -163,7 +174,9 @@ export default function App() {
       if (e.key === 'ArrowLeft') isLeftPressed = true;
       if (e.key === 'ArrowRight') isRightPressed = true;
       if (e.key === ' ' && gameStateRef.current !== 'playing') {
+        initAudio();
         setGameState('playing');
+        startMusic();
         if (gameStateRef.current === 'gameover' || gameStateRef.current === 'won') {
           // Reset game
           initBricks();
@@ -224,13 +237,16 @@ export default function App() {
       if (ball.x - ball.radius < BORDER) {
         ball.x = ball.radius + BORDER;
         ball.vx = -ball.vx;
+        playWallBounce();
       } else if (ball.x + ball.radius > CANVAS_WIDTH - BORDER) {
         ball.x = CANVAS_WIDTH - ball.radius - BORDER;
         ball.vx = -ball.vx;
+        playWallBounce();
       }
       if (ball.y - ball.radius < BORDER) {
         ball.y = ball.radius + BORDER;
         ball.vy = -ball.vy;
+        playWallBounce();
       }
 
       // Bottom collision (lose life)
@@ -238,7 +254,10 @@ export default function App() {
         livesRef.current -= 1;
         if (livesRef.current <= 0) {
           setGameState('gameover');
+          stopMusic();
+          playGameOver();
         } else {
+          playLoseLife();
           // Reset ball
           ball.x = paddle.x + paddle.width / 2;
           ball.y = paddle.y - ball.radius - 5;
@@ -258,6 +277,7 @@ export default function App() {
       ) {
         ball.vy = -Math.abs(ball.vy);
         ball.y = paddle.y - ball.radius; // Prevent sticking
+        playPaddleBounce();
         // Add some english based on where it hit the paddle
         const hitPoint = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
         ball.vx = hitPoint * 2.5; // Max horizontal speed
@@ -302,6 +322,7 @@ export default function App() {
             }
             
             scoreRef.current += 10;
+            playBrickExplosion();
 
             // Create explosion particles
             for (let i = 0; i < brick.text.length; i++) {
@@ -359,6 +380,8 @@ export default function App() {
 
       if (activeBricks === 0 && !hitBrick) {
         setGameState('won');
+        stopMusic();
+        playWin();
       }
     };
 
