@@ -1,0 +1,5 @@
+{
+  "name": "Pretext Breaker",
+  "description": "An Arkanoid-style game where the bricks are words from a text paragraph, laid out using the pretext library.",
+  "requestFramePermissions": []
+}
