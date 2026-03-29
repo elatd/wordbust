@@ -88,6 +88,7 @@ export default function App() {
     // Mutable canvas dimensions that track the screen
     let cw = window.innerWidth;
     let ch = window.innerHeight;
+    let bottomInset = 0; // safe area inset for mobile browser nav
 
     // Prepare text measurements (font-dependent, not size-dependent)
     const prepared = prepareWithSegments(TEXT_PARAGRAPH, FONT);
@@ -163,6 +164,10 @@ export default function App() {
       canvas.style.height = `${ch}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+      // Read safe-area-inset-bottom for mobile browser navigation
+      const sabStr = getComputedStyle(document.documentElement).getPropertyValue('--sab').trim();
+      bottomInset = parseFloat(sabStr) || 0;
+
       // Re-layout background words for new width
       initBgWords();
 
@@ -171,8 +176,8 @@ export default function App() {
         initBricks();
       }
 
-      // Reposition paddle
-      paddle.y = ch - 40;
+      // Reposition paddle above bottom safe area
+      paddle.y = ch - bottomInset - 40;
       paddle.x = Math.min(paddle.x, cw - paddle.width);
     };
 
@@ -183,7 +188,7 @@ export default function App() {
 
     let paddle = {
       x: cw / 2 - PADDLE_WIDTH / 2,
-      y: ch - 40,
+      y: ch - bottomInset - 40,
       width: PADDLE_WIDTH,
       height: PADDLE_HEIGHT,
       vx: 0,
@@ -191,7 +196,7 @@ export default function App() {
 
     let ball = {
       x: cw / 2,
-      y: ch - 60,
+      y: ch - bottomInset - 60,
       vx: 1.5,
       vy: -1.5,
       radius: BALL_RADIUS,
@@ -226,11 +231,12 @@ export default function App() {
         scoreRef.current = 0;
         livesRef.current = 3;
         ball.x = cw / 2;
-        ball.y = ch - 60;
+        ball.y = ch - bottomInset - 60;
         ball.vx = 1.5;
         ball.vy = -1.5;
         ball.history = [];
         paddle.x = cw / 2 - PADDLE_WIDTH / 2;
+        paddle.y = ch - bottomInset - 40;
       }
     };
 
@@ -354,8 +360,8 @@ export default function App() {
         playWallBounce();
       }
 
-      // Bottom collision (lose life)
-      if (ball.y + ball.radius > ch) {
+      // Bottom collision (lose life) — above the safe area
+      if (ball.y + ball.radius > ch - bottomInset) {
         livesRef.current -= 1;
         if (livesRef.current <= 0) {
           setGameState('gameover');
@@ -503,10 +509,17 @@ export default function App() {
         ctx.fillText(bgWord.text, bgWord.x, bgWord.y);
       }
 
-      // Draw border
+      // Draw border (bottom edge raised above safe area)
+      const playAreaBottom = ch - bottomInset;
       ctx.strokeStyle = COLORS.accent;
       ctx.lineWidth = 4;
-      ctx.strokeRect(2, 2, cw - 4, ch - 4);
+      ctx.strokeRect(2, 2, cw - 4, playAreaBottom - 4);
+
+      // Fill safe area below play area with background
+      if (bottomInset > 0) {
+        ctx.fillStyle = COLORS.bg;
+        ctx.fillRect(0, playAreaBottom, cw, bottomInset);
+      }
 
       // Draw bricks (text)
       ctx.font = FONT;
