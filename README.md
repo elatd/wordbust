@@ -2,19 +2,33 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# Pretext Breaker
 
-This contains everything you need to run your app locally.
+A brick-breaker game where the bricks are words. Built with the [Pretext](https://github.com/chenglou/pretext) text layout engine, React, and Canvas.
 
-View your app in AI Studio: https://ai.studio/apps/55f0f5f6-746a-4fe6-914b-f949b528e1a0
+## How It Works
+
+A paragraph is measured and laid out using Pretext (no DOM needed), then each word becomes a breakable brick. Smash them all with the ball to win.
+
+## Controls
+
+- **Mouse** - move the paddle
+- **Arrow keys** - move the paddle (alternative)
+- **Space** - start / restart
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
-
+**Prerequisites:** Node.js
 
 1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+   ```
+   npm install
+   ```
+2. Run the app:
+   ```
+   npm run dev
+   ```
+
+## Built With
+
+Google AI Studio, Claude Code, and Codex
