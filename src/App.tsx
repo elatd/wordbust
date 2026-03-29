@@ -178,14 +178,25 @@ export default function App() {
       // Re-layout background words for new width
       initBgWords();
 
-      // Re-layout bricks only if not currently playing (don't disrupt active game)
-      if (gameStateRef.current !== 'playing') {
+      // Re-layout bricks for new width, preserving active state during gameplay
+      if (gameStateRef.current === 'playing') {
+        const activeStates = bricks.map(b => b.active);
+        initBricks();
+        // Restore which bricks were already destroyed
+        for (let i = 0; i < Math.min(bricks.length, activeStates.length); i++) {
+          bricks[i].active = activeStates[i];
+        }
+      } else {
         initBricks();
       }
 
       // Reposition paddle above bottom safe area
       paddle.y = ch - bottomInset - 40;
       paddle.x = Math.min(paddle.x, cw - paddle.width);
+
+      // Keep ball within new bounds
+      ball.x = Math.max(ball.radius, Math.min(ball.x, cw - ball.radius));
+      ball.y = Math.max(ball.radius, Math.min(ball.y, ch - bottomInset - ball.radius));
     };
 
     const initAll = () => {
