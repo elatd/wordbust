@@ -70,12 +70,12 @@ type Particle = {
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState, setGameState] = useState<'start' | 'playing' | 'gameover' | 'won'>('start');
-  
+
   // Use refs for game state to avoid re-running useEffect
   const scoreRef = useRef(0);
   const livesRef = useRef(3);
   const gameStateRef = useRef<'start' | 'playing' | 'gameover' | 'won'>('start');
-  
+
   // Sync state to ref
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -86,6 +86,43 @@ export default function App() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    // Responsive canvas sizing
+    const resizeCanvas = () => {
+      const aspectRatio = CANVAS_WIDTH / CANVAS_HEIGHT;
+      const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+      const windowAspect = windowWidth / windowHeight;
+
+      let cssWidth: number, cssHeight: number;
+      if (windowAspect > aspectRatio) {
+        cssHeight = windowHeight;
+        cssWidth = windowHeight * aspectRatio;
+      } else {
+        cssWidth = windowWidth;
+        cssHeight = windowWidth / aspectRatio;
+      }
+
+      canvas.style.width = `${cssWidth}px`;
+      canvas.style.height = `${cssHeight}px`;
+    };
+
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Helper to convert screen coordinates to canvas coordinates
+    const screenToCanvas = (clientX: number, clientY: number) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: ((clientX - rect.left) / rect.width) * CANVAS_WIDTH,
+        y: ((clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
+      };
+    };
+
+    // Start button geometry (canvas coordinates)
+    const START_BTN_X = CANVAS_WIDTH / 2;
+    const START_BTN_Y = CANVAS_HEIGHT / 2 + 60;
+    const START_BTN_RADIUS = 50;
 
     // Prepare foreground text
     const prepared = prepareWithSegments(TEXT_PARAGRAPH, FONT);
@@ -98,7 +135,9 @@ export default function App() {
     let bricks: Brick[] = [];
     let bgWords: BgWord[] = [];
     let particles: Particle[] = [];
-    
+    let startBtnHover = false;
+    let startBtnPressed = false;
+
     // Initialize background words
     let bgStartY = 20;
     for (const line of bgLayout.lines) {
@@ -146,7 +185,7 @@ export default function App() {
         startY += LINE_HEIGHT;
       }
     };
-    
+
     initBricks();
 
     let paddle = {
@@ -170,25 +209,36 @@ export default function App() {
     let isLeftPressed = false;
     let isRightPressed = false;
 
+    const isInsideStartBtn = (cx: number, cy: number) => {
+      const dx = cx - START_BTN_X;
+      const dy = cy - START_BTN_Y;
+      return dx * dx + dy * dy <= START_BTN_RADIUS * START_BTN_RADIUS;
+    };
+
+    const startGame = () => {
+      if (gameStateRef.current === 'playing') return;
+      initAudio();
+      const wasOver = gameStateRef.current === 'gameover' || gameStateRef.current === 'won';
+      setGameState('playing');
+      startMusic();
+      if (wasOver) {
+        initBricks();
+        scoreRef.current = 0;
+        livesRef.current = 3;
+        ball.x = CANVAS_WIDTH / 2;
+        ball.y = CANVAS_HEIGHT - 60;
+        ball.vx = 1.5;
+        ball.vy = -1.5;
+        ball.history = [];
+        paddle.x = CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2;
+      }
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft') isLeftPressed = true;
       if (e.key === 'ArrowRight') isRightPressed = true;
-      if (e.key === ' ' && gameStateRef.current !== 'playing') {
-        initAudio();
-        setGameState('playing');
-        startMusic();
-        if (gameStateRef.current === 'gameover' || gameStateRef.current === 'won') {
-          // Reset game
-          initBricks();
-          scoreRef.current = 0;
-          livesRef.current = 3;
-          ball.x = CANVAS_WIDTH / 2;
-          ball.y = CANVAS_HEIGHT - 60;
-          ball.vx = 1.5;
-          ball.vy = -1.5;
-          ball.history = [];
-          paddle.x = CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2;
-        }
+      if (e.key === ' ') {
+        startGame();
       }
     };
 
@@ -198,15 +248,58 @@ export default function App() {
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = CANVAS_WIDTH / rect.width;
-      const mouseX = (e.clientX - rect.left) * scaleX;
-      paddle.x = Math.max(0, Math.min(mouseX - paddle.width / 2, CANVAS_WIDTH - paddle.width));
+      const { x, y } = screenToCanvas(e.clientX, e.clientY);
+      if (gameStateRef.current === 'playing') {
+        canvas.style.cursor = 'none';
+        paddle.x = Math.max(0, Math.min(x - paddle.width / 2, CANVAS_WIDTH - paddle.width));
+      } else {
+        startBtnHover = isInsideStartBtn(x, y);
+        canvas.style.cursor = startBtnHover ? 'pointer' : 'default';
+      }
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      if (gameStateRef.current === 'playing') return;
+      const { x, y } = screenToCanvas(e.clientX, e.clientY);
+      if (isInsideStartBtn(x, y)) {
+        startGame();
+      }
+    };
+
+    // Touch support for mobile
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      if (gameStateRef.current !== 'playing') return;
+      const touch = e.touches[0];
+      const { x } = screenToCanvas(touch.clientX, touch.clientY);
+      paddle.x = Math.max(0, Math.min(x - paddle.width / 2, CANVAS_WIDTH - paddle.width));
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const { x, y } = screenToCanvas(touch.clientX, touch.clientY);
+      if (gameStateRef.current !== 'playing') {
+        if (isInsideStartBtn(x, y)) {
+          startBtnPressed = true;
+          startGame();
+        }
+      } else {
+        paddle.x = Math.max(0, Math.min(x - paddle.width / 2, CANVAS_WIDTH - paddle.width));
+      }
+    };
+
+    const handleTouchEnd = () => {
+      startBtnPressed = false;
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('click', handleClick);
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd);
 
     const update = () => {
       if (gameStateRef.current !== 'playing') return;
@@ -462,36 +555,69 @@ export default function App() {
       ctx.fillText(`SCORE: ${scoreRef.current}`, 20, 20);
       ctx.fillText(`LIVES: ${'♥'.repeat(livesRef.current)}`, CANVAS_WIDTH - 150, 20);
 
+      // Draw start button helper
+      const drawStartButton = (label: string, subtitle: string) => {
+        ctx.fillStyle = 'rgba(255, 249, 0, 0.85)';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Title
+        ctx.fillStyle = COLORS.text;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 40px monospace';
+        ctx.fillText(label, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 50);
+
+        // Button shadow
+        ctx.beginPath();
+        ctx.arc(START_BTN_X, START_BTN_Y + 4, START_BTN_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(180, 0, 40, 0.5)';
+        ctx.fill();
+
+        // Button body
+        const btnScale = startBtnPressed ? 0.92 : startBtnHover ? 1.05 : 1;
+        const r = START_BTN_RADIUS * btnScale;
+        const gradient = ctx.createRadialGradient(
+          START_BTN_X - r * 0.3, START_BTN_Y - r * 0.3, r * 0.1,
+          START_BTN_X, START_BTN_Y, r,
+        );
+        gradient.addColorStop(0, '#FF3366');
+        gradient.addColorStop(0.7, '#FF004F');
+        gradient.addColorStop(1, '#CC003F');
+        ctx.beginPath();
+        ctx.arc(START_BTN_X, START_BTN_Y, r, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.fill();
+
+        // Button highlight
+        ctx.beginPath();
+        ctx.arc(START_BTN_X - r * 0.2, START_BTN_Y - r * 0.2, r * 0.45, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.fill();
+
+        // Play triangle
+        const triSize = r * 0.45;
+        ctx.beginPath();
+        ctx.moveTo(START_BTN_X - triSize * 0.4, START_BTN_Y - triSize * 0.6);
+        ctx.lineTo(START_BTN_X - triSize * 0.4, START_BTN_Y + triSize * 0.6);
+        ctx.lineTo(START_BTN_X + triSize * 0.6, START_BTN_Y);
+        ctx.closePath();
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+
+        // Subtitle below button
+        ctx.fillStyle = COLORS.text;
+        ctx.font = 'bold 16px monospace';
+        ctx.fillText(subtitle, CANVAS_WIDTH / 2, START_BTN_Y + START_BTN_RADIUS + 30);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+      };
+
       if (gameStateRef.current === 'start') {
-        ctx.fillStyle = 'rgba(255, 249, 0, 0.8)';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.fillStyle = COLORS.text;
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 40px monospace';
-        ctx.fillText('PRETEXT BREAKER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-        ctx.font = 'bold 20px monospace';
-        ctx.fillText('Press SPACE to Start', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
-        ctx.textAlign = 'left';
+        drawStartButton('PRETEXT BREAKER', 'Tap or press SPACE');
       } else if (gameStateRef.current === 'gameover') {
-        ctx.fillStyle = 'rgba(255, 249, 0, 0.8)';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.fillStyle = COLORS.text;
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 40px monospace';
-        ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-        ctx.font = 'bold 20px monospace';
-        ctx.fillText('Press SPACE to Restart', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
-        ctx.textAlign = 'left';
+        drawStartButton('GAME OVER', 'Tap to Restart');
       } else if (gameStateRef.current === 'won') {
-        ctx.fillStyle = 'rgba(255, 249, 0, 0.8)';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-        ctx.fillStyle = COLORS.text;
-        ctx.textAlign = 'center';
-        ctx.font = 'bold 40px monospace';
-        ctx.fillText('YOU WIN!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 20);
-        ctx.font = 'bold 20px monospace';
-        ctx.fillText('Press SPACE to Play Again', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 30);
-        ctx.textAlign = 'left';
+        drawStartButton('YOU WIN!', 'Tap to Play Again');
       }
     };
 
@@ -507,7 +633,12 @@ export default function App() {
       cancelAnimationFrame(animationId);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('resize', resizeCanvas);
       canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('click', handleClick);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchend', handleTouchEnd);
     };
   }, []);
 
@@ -520,12 +651,10 @@ export default function App() {
         ref={canvasRef}
         width={CANVAS_WIDTH}
         height={CANVAS_HEIGHT}
-        className="block cursor-none"
+        className="block"
         style={{
           backgroundColor: COLORS.bg,
-          width: '100vw',
-          height: '100vh',
-          objectFit: 'contain',
+          touchAction: 'none',
         }}
       />
     </div>
