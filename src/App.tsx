@@ -154,17 +154,24 @@ export default function App() {
 
     const resizeCanvas = () => {
       const dpr = window.devicePixelRatio || 1;
-      // Use visualViewport for accurate size on mobile (accounts for browser chrome)
+
+      // Use the smallest reported height to avoid content behind browser chrome.
+      // window.innerHeight on iOS includes area behind bottom bar,
+      // but document.documentElement.clientHeight respects actual CSS viewport.
+      // visualViewport.height is accurate when available and the page isn't zoomed.
       const vv = window.visualViewport;
+      const candidates = [window.innerHeight, document.documentElement.clientHeight];
+      if (vv) candidates.push(vv.height);
       cw = vv ? vv.width : window.innerWidth;
-      ch = vv ? vv.height : window.innerHeight;
+      ch = Math.min(...candidates);
+
       canvas.width = cw * dpr;
       canvas.height = ch * dpr;
       canvas.style.width = `${cw}px`;
       canvas.style.height = `${ch}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Read safe-area-inset-bottom for mobile browser navigation
+      // Read safe-area-inset-bottom (notch / home indicator)
       const sabStr = getComputedStyle(document.documentElement).getPropertyValue('--sab').trim();
       bottomInset = parseFloat(sabStr) || 0;
 
@@ -672,13 +679,23 @@ export default function App() {
 
   return (
     <div
-      className="w-screen h-screen flex items-center justify-center overflow-hidden"
-      style={{ backgroundColor: COLORS.bg }}
+      className="overflow-hidden"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: COLORS.bg,
+      }}
     >
       <canvas
         ref={canvasRef}
         className="block"
         style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
           backgroundColor: COLORS.bg,
           touchAction: 'none',
         }}
