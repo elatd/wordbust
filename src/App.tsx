@@ -17,8 +17,6 @@ import {
   playWin,
 } from './audio.ts';
 
-const CANVAS_WIDTH = 800;
-const CANVAS_HEIGHT = 600;
 const PADDLE_WIDTH = 100;
 const PADDLE_HEIGHT = 10;
 const BALL_RADIUS = 6;
@@ -87,50 +85,13 @@ export default function App() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Responsive canvas sizing
-    const resizeCanvas = () => {
-      const aspectRatio = CANVAS_WIDTH / CANVAS_HEIGHT;
-      const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
-      const windowAspect = windowWidth / windowHeight;
+    // Mutable canvas dimensions that track the screen
+    let cw = window.innerWidth;
+    let ch = window.innerHeight;
 
-      let cssWidth: number, cssHeight: number;
-      if (windowAspect > aspectRatio) {
-        cssHeight = windowHeight;
-        cssWidth = windowHeight * aspectRatio;
-      } else {
-        cssWidth = windowWidth;
-        cssHeight = windowWidth / aspectRatio;
-      }
-
-      canvas.style.width = `${cssWidth}px`;
-      canvas.style.height = `${cssHeight}px`;
-    };
-
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    // Helper to convert screen coordinates to canvas coordinates
-    const screenToCanvas = (clientX: number, clientY: number) => {
-      const rect = canvas.getBoundingClientRect();
-      return {
-        x: ((clientX - rect.left) / rect.width) * CANVAS_WIDTH,
-        y: ((clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
-      };
-    };
-
-    // Start button geometry (canvas coordinates)
-    const START_BTN_X = CANVAS_WIDTH / 2;
-    const START_BTN_Y = CANVAS_HEIGHT / 2 + 60;
-    const START_BTN_RADIUS = 50;
-
-    // Prepare foreground text
+    // Prepare text measurements (font-dependent, not size-dependent)
     const prepared = prepareWithSegments(TEXT_PARAGRAPH, FONT);
-    const layout = layoutWithLines(prepared, CANVAS_WIDTH - 100, LINE_HEIGHT);
-
-    // Prepare background text
     const bgPrepared = prepareWithSegments(BG_TEXT_PARAGRAPH, BG_FONT);
-    const bgLayout = layoutWithLines(bgPrepared, CANVAS_WIDTH - 40, 18);
 
     let bricks: Brick[] = [];
     let bgWords: BgWord[] = [];
@@ -138,35 +99,39 @@ export default function App() {
     let startBtnHover = false;
     let startBtnPressed = false;
 
-    // Initialize background words
-    let bgStartY = 20;
-    for (const line of bgLayout.lines) {
-      let currentX = 20;
-      for (let i = line.start.segmentIndex; i < line.end.segmentIndex; i++) {
-        const segmentText = bgPrepared.segments[i];
-        const segmentWidth = bgPrepared.widths[i];
-        if (segmentText.trim().length > 0) {
-          bgWords.push({
-            x: currentX,
-            y: bgStartY,
-            originalX: currentX,
-            originalY: bgStartY,
-            targetX: currentX,
-            targetY: bgStartY,
-            text: segmentText,
-          });
+    const initBgWords = () => {
+      bgWords = [];
+      const bgLayout = layoutWithLines(bgPrepared, cw - 40, 18);
+      let bgStartY = 20;
+      for (const line of bgLayout.lines) {
+        let currentX = 20;
+        for (let i = line.start.segmentIndex; i < line.end.segmentIndex; i++) {
+          const segmentText = bgPrepared.segments[i];
+          const segmentWidth = bgPrepared.widths[i];
+          if (segmentText.trim().length > 0) {
+            bgWords.push({
+              x: currentX,
+              y: bgStartY,
+              originalX: currentX,
+              originalY: bgStartY,
+              targetX: currentX,
+              targetY: bgStartY,
+              text: segmentText,
+            });
+          }
+          currentX += segmentWidth;
         }
-        currentX += segmentWidth;
+        bgStartY += 18;
       }
-      bgStartY += 18;
-    }
+    };
 
     const initBricks = () => {
       bricks = [];
       particles = [];
+      const layout = layoutWithLines(prepared, cw - 100, LINE_HEIGHT);
       let startY = 80;
       for (const line of layout.lines) {
-        let currentX = (CANVAS_WIDTH - line.width) / 2;
+        let currentX = (cw - line.width) / 2;
         for (let i = line.start.segmentIndex; i < line.end.segmentIndex; i++) {
           const segmentText = prepared.segments[i];
           const segmentWidth = prepared.widths[i];
@@ -186,33 +151,66 @@ export default function App() {
       }
     };
 
-    initBricks();
+    const resizeCanvas = () => {
+      const dpr = window.devicePixelRatio || 1;
+      cw = window.innerWidth;
+      ch = window.innerHeight;
+      canvas.width = cw * dpr;
+      canvas.height = ch * dpr;
+      canvas.style.width = `${cw}px`;
+      canvas.style.height = `${ch}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Re-layout background words for new width
+      initBgWords();
+
+      // Re-layout bricks only if not currently playing (don't disrupt active game)
+      if (gameStateRef.current !== 'playing') {
+        initBricks();
+      }
+
+      // Reposition paddle
+      paddle.y = ch - 40;
+      paddle.x = Math.min(paddle.x, cw - paddle.width);
+    };
+
+    const initAll = () => {
+      resizeCanvas();
+      initBricks();
+    };
 
     let paddle = {
-      x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2,
-      y: CANVAS_HEIGHT - 40,
+      x: cw / 2 - PADDLE_WIDTH / 2,
+      y: ch - 40,
       width: PADDLE_WIDTH,
       height: PADDLE_HEIGHT,
       vx: 0,
     };
 
     let ball = {
-      x: CANVAS_WIDTH / 2,
-      y: CANVAS_HEIGHT - 60,
-      vx: 1.5, // Slower ball
+      x: cw / 2,
+      y: ch - 60,
+      vx: 1.5,
       vy: -1.5,
       radius: BALL_RADIUS,
       history: [] as {x: number, y: number, r: number}[],
     };
 
+    initAll();
+
     let animationId: number;
     let isLeftPressed = false;
     let isRightPressed = false;
 
+    // Start button geometry helpers (always computed from current cw/ch)
+    const btnX = () => cw / 2;
+    const btnY = () => ch / 2 + 60;
+    const BTN_RADIUS = 50;
+
     const isInsideStartBtn = (cx: number, cy: number) => {
-      const dx = cx - START_BTN_X;
-      const dy = cy - START_BTN_Y;
-      return dx * dx + dy * dy <= START_BTN_RADIUS * START_BTN_RADIUS;
+      const dx = cx - btnX();
+      const dy = cy - btnY();
+      return dx * dx + dy * dy <= BTN_RADIUS * BTN_RADIUS;
     };
 
     const startGame = () => {
@@ -225,12 +223,12 @@ export default function App() {
         initBricks();
         scoreRef.current = 0;
         livesRef.current = 3;
-        ball.x = CANVAS_WIDTH / 2;
-        ball.y = CANVAS_HEIGHT - 60;
+        ball.x = cw / 2;
+        ball.y = ch - 60;
         ball.vx = 1.5;
         ball.vy = -1.5;
         ball.history = [];
-        paddle.x = CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2;
+        paddle.x = cw / 2 - PADDLE_WIDTH / 2;
       }
     };
 
@@ -247,11 +245,20 @@ export default function App() {
       if (e.key === 'ArrowRight') isRightPressed = false;
     };
 
+    // Helper to convert screen coordinates to canvas coordinates
+    const screenToCanvas = (clientX: number, clientY: number) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: ((clientX - rect.left) / rect.width) * cw,
+        y: ((clientY - rect.top) / rect.height) * ch,
+      };
+    };
+
     const handleMouseMove = (e: MouseEvent) => {
       const { x, y } = screenToCanvas(e.clientX, e.clientY);
       if (gameStateRef.current === 'playing') {
         canvas.style.cursor = 'none';
-        paddle.x = Math.max(0, Math.min(x - paddle.width / 2, CANVAS_WIDTH - paddle.width));
+        paddle.x = Math.max(0, Math.min(x - paddle.width / 2, cw - paddle.width));
       } else {
         startBtnHover = isInsideStartBtn(x, y);
         canvas.style.cursor = startBtnHover ? 'pointer' : 'default';
@@ -272,7 +279,7 @@ export default function App() {
       if (gameStateRef.current !== 'playing') return;
       const touch = e.touches[0];
       const { x } = screenToCanvas(touch.clientX, touch.clientY);
-      paddle.x = Math.max(0, Math.min(x - paddle.width / 2, CANVAS_WIDTH - paddle.width));
+      paddle.x = Math.max(0, Math.min(x - paddle.width / 2, cw - paddle.width));
     };
 
     const handleTouchStart = (e: TouchEvent) => {
@@ -285,7 +292,7 @@ export default function App() {
           startGame();
         }
       } else {
-        paddle.x = Math.max(0, Math.min(x - paddle.width / 2, CANVAS_WIDTH - paddle.width));
+        paddle.x = Math.max(0, Math.min(x - paddle.width / 2, cw - paddle.width));
       }
     };
 
@@ -295,6 +302,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('resize', resizeCanvas);
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('click', handleClick);
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
@@ -307,14 +315,14 @@ export default function App() {
       // Move paddle
       if (isLeftPressed) paddle.x -= 7;
       if (isRightPressed) paddle.x += 7;
-      
+
       const BORDER = 4;
-      paddle.x = Math.max(BORDER, Math.min(paddle.x, CANVAS_WIDTH - paddle.width - BORDER));
+      paddle.x = Math.max(BORDER, Math.min(paddle.x, cw - paddle.width - BORDER));
 
       // Record ball history for tail (sputtering effect)
       if (Math.random() > 0.3) {
-        ball.history.push({ 
-          x: ball.x + (Math.random() - 0.5) * 8, 
+        ball.history.push({
+          x: ball.x + (Math.random() - 0.5) * 8,
           y: ball.y + (Math.random() - 0.5) * 8,
           r: ball.radius * (0.5 + Math.random() * 0.8)
         });
@@ -332,8 +340,8 @@ export default function App() {
         ball.x = ball.radius + BORDER;
         ball.vx = -ball.vx;
         playWallBounce();
-      } else if (ball.x + ball.radius > CANVAS_WIDTH - BORDER) {
-        ball.x = CANVAS_WIDTH - ball.radius - BORDER;
+      } else if (ball.x + ball.radius > cw - BORDER) {
+        ball.x = cw - ball.radius - BORDER;
         ball.vx = -ball.vx;
         playWallBounce();
       }
@@ -344,7 +352,7 @@ export default function App() {
       }
 
       // Bottom collision (lose life)
-      if (ball.y + ball.radius > CANVAS_HEIGHT) {
+      if (ball.y + ball.radius > ch) {
         livesRef.current -= 1;
         if (livesRef.current <= 0) {
           setGameState('gameover');
@@ -375,7 +383,7 @@ export default function App() {
         // Add some english based on where it hit the paddle
         const hitPoint = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
         ball.vx = hitPoint * 2.5; // Max horizontal speed
-        
+
         // Ensure minimum vertical speed so it doesn't bounce horizontally forever
         if (Math.abs(ball.vy) < 1) {
             ball.vy = -1;
@@ -385,7 +393,7 @@ export default function App() {
       // Brick collision
       let activeBricks = 0;
       let hitBrick = false;
-      
+
       for (const brick of bricks) {
         if (!brick.active) continue;
         activeBricks++;
@@ -400,21 +408,21 @@ export default function App() {
           ) {
             brick.active = false;
             hitBrick = true;
-            
+
             // Determine bounce direction based on overlap
             const overlapLeft = (ball.x + ball.radius) - brick.x;
             const overlapRight = (brick.x + brick.width) - (ball.x - ball.radius);
             const overlapTop = (ball.y + ball.radius) - (brick.y - brick.height);
             const overlapBottom = brick.y - (ball.y - ball.radius);
-            
+
             const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
-            
+
             if (minOverlap === overlapTop || minOverlap === overlapBottom) {
               ball.vy = -ball.vy;
             } else {
               ball.vx = -ball.vx;
             }
-            
+
             scoreRef.current += 10;
             playBrickExplosion();
 
@@ -452,10 +460,10 @@ export default function App() {
       for (const bgWord of bgWords) {
         const dx = bgWord.x - ball.x;
         // Adjust y since text is drawn from bottom
-        const dy = (bgWord.y - 9) - ball.y; 
+        const dy = (bgWord.y - 9) - ball.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const maxDist = 80;
-        
+
         if (dist < maxDist) {
           const force = (maxDist - dist) / maxDist;
           // Push away from ball
@@ -466,7 +474,7 @@ export default function App() {
           bgWord.targetX = bgWord.originalX;
           bgWord.targetY = bgWord.originalY;
         }
-        
+
         // Spring physics for smooth return
         bgWord.x += (bgWord.targetX - bgWord.x) * 0.15;
         bgWord.y += (bgWord.targetY - bgWord.y) * 0.15;
@@ -482,7 +490,7 @@ export default function App() {
     const draw = () => {
       // Clear background
       ctx.fillStyle = COLORS.bg;
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.fillRect(0, 0, cw, ch);
 
       // Draw background text
       ctx.font = BG_FONT;
@@ -495,7 +503,7 @@ export default function App() {
       // Draw border
       ctx.strokeStyle = COLORS.accent;
       ctx.lineWidth = 4;
-      ctx.strokeRect(2, 2, CANVAS_WIDTH - 4, CANVAS_HEIGHT - 4);
+      ctx.strokeRect(2, 2, cw - 4, ch - 4);
 
       // Draw bricks (text)
       ctx.font = FONT;
@@ -553,53 +561,56 @@ export default function App() {
       ctx.font = 'bold 20px monospace';
       ctx.textBaseline = 'top';
       ctx.fillText(`SCORE: ${scoreRef.current}`, 20, 20);
-      ctx.fillText(`LIVES: ${'♥'.repeat(livesRef.current)}`, CANVAS_WIDTH - 150, 20);
+      ctx.fillText(`LIVES: ${'♥'.repeat(livesRef.current)}`, cw - 150, 20);
 
       // Draw start button helper
       const drawStartButton = (label: string, subtitle: string) => {
         ctx.fillStyle = 'rgba(255, 249, 0, 0.85)';
-        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        ctx.fillRect(0, 0, cw, ch);
 
         // Title
         ctx.fillStyle = COLORS.text;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.font = 'bold 40px monospace';
-        ctx.fillText(label, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 50);
+        ctx.fillText(label, cw / 2, ch / 2 - 50);
+
+        const bx = btnX();
+        const by = btnY();
 
         // Button shadow
         ctx.beginPath();
-        ctx.arc(START_BTN_X, START_BTN_Y + 4, START_BTN_RADIUS, 0, Math.PI * 2);
+        ctx.arc(bx, by + 4, BTN_RADIUS, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(180, 0, 40, 0.5)';
         ctx.fill();
 
         // Button body
         const btnScale = startBtnPressed ? 0.92 : startBtnHover ? 1.05 : 1;
-        const r = START_BTN_RADIUS * btnScale;
+        const r = BTN_RADIUS * btnScale;
         const gradient = ctx.createRadialGradient(
-          START_BTN_X - r * 0.3, START_BTN_Y - r * 0.3, r * 0.1,
-          START_BTN_X, START_BTN_Y, r,
+          bx - r * 0.3, by - r * 0.3, r * 0.1,
+          bx, by, r,
         );
         gradient.addColorStop(0, '#FF3366');
         gradient.addColorStop(0.7, '#FF004F');
         gradient.addColorStop(1, '#CC003F');
         ctx.beginPath();
-        ctx.arc(START_BTN_X, START_BTN_Y, r, 0, Math.PI * 2);
+        ctx.arc(bx, by, r, 0, Math.PI * 2);
         ctx.fillStyle = gradient;
         ctx.fill();
 
         // Button highlight
         ctx.beginPath();
-        ctx.arc(START_BTN_X - r * 0.2, START_BTN_Y - r * 0.2, r * 0.45, 0, Math.PI * 2);
+        ctx.arc(bx - r * 0.2, by - r * 0.2, r * 0.45, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.fill();
 
         // Play triangle
         const triSize = r * 0.45;
         ctx.beginPath();
-        ctx.moveTo(START_BTN_X - triSize * 0.4, START_BTN_Y - triSize * 0.6);
-        ctx.lineTo(START_BTN_X - triSize * 0.4, START_BTN_Y + triSize * 0.6);
-        ctx.lineTo(START_BTN_X + triSize * 0.6, START_BTN_Y);
+        ctx.moveTo(bx - triSize * 0.4, by - triSize * 0.6);
+        ctx.lineTo(bx - triSize * 0.4, by + triSize * 0.6);
+        ctx.lineTo(bx + triSize * 0.6, by);
         ctx.closePath();
         ctx.fillStyle = '#FFFFFF';
         ctx.fill();
@@ -607,7 +618,7 @@ export default function App() {
         // Subtitle below button
         ctx.fillStyle = COLORS.text;
         ctx.font = 'bold 16px monospace';
-        ctx.fillText(subtitle, CANVAS_WIDTH / 2, START_BTN_Y + START_BTN_RADIUS + 30);
+        ctx.fillText(subtitle, cw / 2, by + BTN_RADIUS + 30);
         ctx.textAlign = 'left';
         ctx.textBaseline = 'bottom';
       };
@@ -649,8 +660,6 @@ export default function App() {
     >
       <canvas
         ref={canvasRef}
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
         className="block"
         style={{
           backgroundColor: COLORS.bg,
