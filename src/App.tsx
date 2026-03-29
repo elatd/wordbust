@@ -20,8 +20,9 @@ import {
 const PADDLE_WIDTH = 100;
 const PADDLE_HEIGHT = 10;
 const BALL_RADIUS = 6;
-const LINE_HEIGHT = 40;
-const FONT = 'bold 32px monospace';
+const BASE_FONT_SIZE = 32;
+const BASE_LINE_HEIGHT = 40;
+const BASE_WIDTH = 800; // Reference width for scaling
 const BG_FONT = '14px monospace';
 
 const COLORS = {
@@ -90,8 +91,20 @@ export default function App() {
     let ch = window.innerHeight;
     let bottomInset = 0; // safe area inset for mobile browser nav
 
-    // Prepare text measurements (font-dependent, not size-dependent)
-    const prepared = prepareWithSegments(TEXT_PARAGRAPH, FONT);
+    // Dynamic font sizing based on canvas width
+    let fontSize = BASE_FONT_SIZE;
+    let lineHeight = BASE_LINE_HEIGHT;
+    let font = `bold ${fontSize}px monospace`;
+
+    const updateFontSize = () => {
+      const scale = Math.max(0.5, Math.min(1.5, cw / BASE_WIDTH));
+      fontSize = Math.round(BASE_FONT_SIZE * scale);
+      lineHeight = Math.round(BASE_LINE_HEIGHT * scale);
+      font = `bold ${fontSize}px monospace`;
+    };
+
+    // Prepare text measurements (font-dependent, re-prepared on resize)
+    let prepared = prepareWithSegments(TEXT_PARAGRAPH, font);
     const bgPrepared = prepareWithSegments(BG_TEXT_PARAGRAPH, BG_FONT);
 
     let bricks: Brick[] = [];
@@ -129,7 +142,9 @@ export default function App() {
     const initBricks = () => {
       bricks = [];
       particles = [];
-      const layout = layoutWithLines(prepared, cw - 100, LINE_HEIGHT);
+      updateFontSize();
+      prepared = prepareWithSegments(TEXT_PARAGRAPH, font);
+      const layout = layoutWithLines(prepared, cw - 100, lineHeight);
       let startY = 80;
       for (const line of layout.lines) {
         let currentX = (cw - line.width) / 2;
@@ -141,14 +156,14 @@ export default function App() {
               x: currentX,
               y: startY,
               width: segmentWidth,
-              height: LINE_HEIGHT,
+              height: lineHeight,
               text: segmentText,
               active: true,
             });
           }
           currentX += segmentWidth;
         }
-        startY += LINE_HEIGHT;
+        startY += lineHeight;
       }
     };
 
@@ -178,14 +193,24 @@ export default function App() {
       // Re-layout background words for new width
       initBgWords();
 
-      // Re-layout bricks only if not currently playing (don't disrupt active game)
+      // Re-layout bricks: during play, reflow while preserving active state
       if (gameStateRef.current !== 'playing') {
         initBricks();
+      } else {
+        const activeStates = bricks.map(b => b.active);
+        initBricks();
+        for (let i = 0; i < bricks.length && i < activeStates.length; i++) {
+          bricks[i].active = activeStates[i];
+        }
       }
 
       // Reposition paddle above bottom safe area
       paddle.y = ch - bottomInset - 40;
       paddle.x = Math.min(paddle.x, cw - paddle.width);
+
+      // Keep ball within bounds after resize
+      ball.x = Math.max(ball.radius, Math.min(ball.x, cw - ball.radius));
+      ball.y = Math.max(ball.radius, Math.min(ball.y, ch - bottomInset - ball.radius));
     };
 
     const initAll = () => {
@@ -529,7 +554,7 @@ export default function App() {
       }
 
       // Draw bricks (text)
-      ctx.font = FONT;
+      ctx.font = font;
       ctx.textBaseline = 'bottom';
       for (const brick of bricks) {
         if (brick.active) {
@@ -539,6 +564,7 @@ export default function App() {
       }
 
       // Draw particles
+      ctx.font = font;
       for (const p of particles) {
         ctx.save();
         ctx.translate(p.x, p.y);
