@@ -153,8 +153,10 @@ export default function App() {
 
     const resizeCanvas = () => {
       const dpr = window.devicePixelRatio || 1;
-      cw = window.innerWidth;
-      ch = window.innerHeight;
+      // Use visualViewport for accurate size on mobile (accounts for browser chrome)
+      const vv = window.visualViewport;
+      cw = vv ? vv.width : window.innerWidth;
+      ch = vv ? vv.height : window.innerHeight;
       canvas.width = cw * dpr;
       canvas.height = ch * dpr;
       canvas.style.width = `${cw}px`;
@@ -303,6 +305,7 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('resize', resizeCanvas);
+    window.visualViewport?.addEventListener('resize', resizeCanvas);
     canvas.addEventListener('mousemove', handleMouseMove);
     canvas.addEventListener('click', handleClick);
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
@@ -645,6 +648,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('resize', resizeCanvas);
+      window.visualViewport?.removeEventListener('resize', resizeCanvas);
       canvas.removeEventListener('mousemove', handleMouseMove);
       canvas.removeEventListener('click', handleClick);
       canvas.removeEventListener('touchmove', handleTouchMove);
