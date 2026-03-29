@@ -199,7 +199,8 @@ export default function App() {
 
     const handleMouseMove = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
+      const scaleX = CANVAS_WIDTH / rect.width;
+      const mouseX = (e.clientX - rect.left) * scaleX;
       paddle.x = Math.max(0, Math.min(mouseX - paddle.width / 2, CANVAS_WIDTH - paddle.width));
     };
 
@@ -424,9 +425,17 @@ export default function App() {
         ctx.restore();
       }
 
-      // Draw paddle
+      // Draw paddle (pill / rounded rectangle)
       ctx.fillStyle = COLORS.accent;
-      ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+      const pRadius = paddle.height / 2;
+      ctx.beginPath();
+      ctx.moveTo(paddle.x + pRadius, paddle.y);
+      ctx.lineTo(paddle.x + paddle.width - pRadius, paddle.y);
+      ctx.arc(paddle.x + paddle.width - pRadius, paddle.y + pRadius, pRadius, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(paddle.x + pRadius, paddle.y + paddle.height);
+      ctx.arc(paddle.x + pRadius, paddle.y + pRadius, pRadius, Math.PI / 2, -Math.PI / 2);
+      ctx.closePath();
+      ctx.fill();
 
       // Draw ball tail
       for (let i = 0; i < ball.history.length; i++) {
@@ -503,16 +512,22 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#111] flex items-center justify-center p-4">
-      <div className="relative shadow-2xl">
-        <canvas
-          ref={canvasRef}
-          width={CANVAS_WIDTH}
-          height={CANVAS_HEIGHT}
-          className="block max-w-full h-auto cursor-none"
-          style={{ backgroundColor: COLORS.bg }}
-        />
-      </div>
+    <div
+      className="w-screen h-screen flex items-center justify-center overflow-hidden"
+      style={{ backgroundColor: COLORS.bg }}
+    >
+      <canvas
+        ref={canvasRef}
+        width={CANVAS_WIDTH}
+        height={CANVAS_HEIGHT}
+        className="block cursor-none"
+        style={{
+          backgroundColor: COLORS.bg,
+          width: '100vw',
+          height: '100vh',
+          objectFit: 'contain',
+        }}
+      />
     </div>
   );
 }

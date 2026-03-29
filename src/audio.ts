@@ -18,14 +18,15 @@ function getCtx(): AudioContext {
   return audioCtx;
 }
 
-// Note frequencies for chiptune music (C4-B5 range)
+// Note frequencies for chiptune music
 const NOTES: Record<string, number> = {
+  C3: 130.81, D3: 146.83, E3: 164.81, F3: 174.61,
+  G3: 196.00, A3: 220.00, B3: 246.94,
   C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23,
   G4: 392.00, A4: 440.00, B4: 493.88,
   C5: 523.25, D5: 587.33, E5: 659.26, F5: 698.46,
   G5: 783.99, A5: 880.00, B5: 987.77,
-  C3: 130.81, E3: 164.81, G3: 196.00, A3: 220.00,
-  D3: 146.83, F3: 174.61, B3: 246.94,
+  C6: 1046.50,
 };
 
 // --- Sound Effects ---
@@ -159,35 +160,148 @@ export function playWin() {
 
 // --- 8-bit Background Music ---
 
-// A catchy chiptune loop: melody + bass + arpeggio
-const MELODY = [
-  // Bar 1
+// 16-bar chiptune loop: melody + bass + arpeggios
+const MELODY: (string | null)[] = [
+  // === Section A: Main theme (bars 1-4) ===
+  // Bar 1 - Iconic opening phrase
   'E5', 'E5', null, 'E5', null, 'C5', 'E5', null,
   'G5', null, null, null, 'G4', null, null, null,
-  // Bar 2
+  // Bar 2 - Answer phrase
   'C5', null, null, 'G4', null, null, 'E4', null,
   null, 'A4', null, 'B4', null, 'A4', 'A4', null,
-  // Bar 3
+  // Bar 3 - Rising action
   'G4', 'E5', 'G5', 'A5', null, 'F5', 'G5', null,
   'E5', null, 'C5', 'D5', 'B4', null, null, null,
-  // Bar 4
+  // Bar 4 - Resolution
   'C5', null, null, 'G4', null, null, 'E4', null,
   null, 'A4', null, 'B4', null, 'A4', 'A4', null,
+
+  // === Section B: Development (bars 5-8) ===
+  // Bar 5 - New melody, higher energy
+  'D5', null, 'D5', null, 'D5', null, 'C5', 'D5',
+  'E5', null, 'C5', null, 'A4', null, null, null,
+  // Bar 6 - Call and response
+  'D5', null, 'D5', null, 'D5', null, 'C5', 'D5',
+  'E5', null, null, null, null, null, null, null,
+  // Bar 7 - Tension build
+  'E5', null, 'D5', null, 'C5', null, 'D5', null,
+  'E5', null, 'G5', null, 'A5', null, 'G5', null,
+  // Bar 8 - Release
+  'E5', null, 'C5', null, 'D5', null, 'B4', null,
+  'C5', null, null, null, null, null, null, null,
+
+  // === Section A': Main theme variation (bars 9-12) ===
+  // Bar 9 - Theme returns with embellishment
+  'E5', 'E5', null, 'E5', null, 'C5', 'E5', null,
+  'G5', null, 'A5', null, 'G5', null, null, null,
+  // Bar 10 - Variation answer
+  'C5', null, 'D5', 'E5', null, null, 'D5', null,
+  'C5', null, 'A4', null, 'B4', null, null, null,
+  // Bar 11 - Climax phrase
+  'A5', null, 'G5', null, 'E5', null, 'G5', null,
+  'A5', null, 'B5', null, 'A5', null, 'G5', null,
+  // Bar 12 - Dramatic pause
+  'E5', null, null, null, 'C5', null, null, null,
+  null, null, null, null, null, null, null, null,
+
+  // === Section C: Bridge / Breakdown (bars 13-16) ===
+  // Bar 13 - Rhythmic stabs
+  'C5', 'E5', null, null, 'G5', null, null, null,
+  'C5', 'E5', null, null, 'A5', null, null, null,
+  // Bar 14 - Ascending run
+  'C5', null, 'D5', null, 'E5', null, 'F5', null,
+  'G5', null, 'A5', null, 'B5', null, 'C6', null,
+  // Bar 15 - Descending cascade
+  'B5', null, 'A5', null, 'G5', null, 'F5', null,
+  'E5', null, 'D5', null, 'C5', null, 'B4', null,
+  // Bar 16 - Turnaround (leads back to bar 1)
+  'C5', null, 'E5', null, 'G4', null, 'C5', null,
+  'E5', null, null, 'D5', null, 'C5', 'B4', null,
 ];
 
-const BASS = [
-  // Bar 1
+const BASS: (string | null)[] = [
+  // === Section A (bars 1-4) ===
   'C3', null, null, null, 'G3', null, null, null,
   'C3', null, null, null, 'G3', null, null, null,
-  // Bar 2
   'C3', null, null, null, 'E3', null, null, null,
   'A3', null, null, null, 'B3', null, null, null,
-  // Bar 3
   'C3', null, null, null, 'G3', null, null, null,
   'C3', null, null, null, 'G3', null, null, null,
-  // Bar 4
   'C3', null, null, null, 'E3', null, null, null,
   'A3', null, null, null, 'B3', null, null, null,
+
+  // === Section B (bars 5-8) ===
+  'F3', null, null, null, 'C3', null, null, null,
+  'F3', null, null, null, 'C3', null, null, null,
+  'F3', null, null, null, 'C3', null, null, null,
+  'F3', null, null, null, 'G3', null, null, null,
+  'A3', null, null, null, 'E3', null, null, null,
+  'A3', null, null, null, 'E3', null, null, null,
+  'F3', null, null, null, 'G3', null, null, null,
+  'C3', null, null, null, null, null, null, null,
+
+  // === Section A' (bars 9-12) ===
+  'C3', null, null, null, 'G3', null, null, null,
+  'C3', null, null, null, 'G3', null, null, null,
+  'C3', null, null, null, 'E3', null, null, null,
+  'A3', null, null, null, 'B3', null, null, null,
+  'A3', null, null, null, 'E3', null, null, null,
+  'F3', null, null, null, 'G3', null, null, null,
+  'C3', null, null, null, 'E3', null, null, null,
+  null, null, null, null, null, null, null, null,
+
+  // === Section C: Bridge (bars 13-16) ===
+  'C3', null, 'C3', null, 'E3', null, 'E3', null,
+  'C3', null, 'C3', null, 'A3', null, 'A3', null,
+  'F3', null, null, null, 'G3', null, null, null,
+  'A3', null, null, null, 'B3', null, null, null,
+  'G3', null, null, null, 'F3', null, null, null,
+  'E3', null, null, null, 'D3', null, null, null,
+  'C3', null, 'E3', null, 'G3', null, 'C3', null,
+  'E3', null, null, 'D3', null, 'C3', 'B3', null,
+];
+
+// Arpeggio channel for extra shimmer
+const ARP: (string | null)[] = [
+  // Section A (bars 1-4) - gentle arpeggios
+  'C4', 'E4', 'G4', 'E4', 'C4', 'E4', 'G4', 'E4',
+  'C4', 'E4', 'G4', 'E4', 'B3', 'D4', 'G4', 'D4',
+  'C4', 'E4', 'G4', 'E4', 'C4', 'E4', 'G4', 'E4',
+  'A3', 'C4', 'E4', 'C4', 'B3', 'D4', 'G4', 'D4',
+  'C4', 'E4', 'G4', 'E4', 'C4', 'E4', 'G4', 'E4',
+  'C4', 'E4', 'G4', 'E4', 'B3', 'D4', 'G4', 'D4',
+  'C4', 'E4', 'G4', 'E4', 'C4', 'E4', 'G4', 'E4',
+  'A3', 'C4', 'E4', 'C4', 'B3', 'D4', 'G4', 'D4',
+
+  // Section B (bars 5-8) - different chord tones
+  'F4', 'A4', 'C5', 'A4', 'F4', 'A4', 'C5', 'A4',
+  'F4', 'A4', 'C5', 'A4', 'E4', 'G4', 'C5', 'G4',
+  'F4', 'A4', 'C5', 'A4', 'F4', 'A4', 'C5', 'A4',
+  'F4', 'A4', 'C5', 'A4', 'G4', 'B4', 'D5', 'B4',
+  'A4', 'C5', 'E5', 'C5', 'A4', 'C5', 'E5', 'C5',
+  'A4', 'C5', 'E5', 'C5', 'G4', 'B4', 'E5', 'B4',
+  'F4', 'A4', 'C5', 'A4', 'G4', 'B4', 'D5', 'B4',
+  'C4', 'E4', 'G4', 'E4', null, null, null, null,
+
+  // Section A' (bars 9-12) - embellished arpeggios
+  'C4', 'G4', 'E4', 'G4', 'C4', 'G4', 'E4', 'G4',
+  'C4', 'G4', 'E4', 'G4', 'B3', 'G4', 'D4', 'G4',
+  'C4', 'G4', 'E4', 'G4', 'C4', 'G4', 'E4', 'G4',
+  'A3', 'E4', 'C4', 'E4', 'B3', 'G4', 'D4', 'G4',
+  'A3', 'E4', 'C4', 'E4', 'A3', 'E4', 'C4', 'E4',
+  'F4', 'A4', 'C5', 'A4', 'G4', 'B4', 'D5', 'B4',
+  'C4', 'E4', 'G4', 'E4', 'C4', 'E4', 'G4', 'E4',
+  null, null, null, null, null, null, null, null,
+
+  // Section C (bars 13-16) - rhythmic pulse
+  'C4', null, 'E4', null, 'G4', null, 'E4', null,
+  'C4', null, 'E4', null, 'A4', null, 'E4', null,
+  null, null, null, null, null, null, null, null,
+  null, null, null, null, null, null, null, null,
+  null, null, null, null, null, null, null, null,
+  null, null, null, null, null, null, null, null,
+  'C4', null, 'E4', null, 'G4', null, 'C4', null,
+  'E4', null, null, null, null, null, null, null,
 ];
 
 function playNote(
@@ -230,6 +344,10 @@ function scheduleLoop() {
     }
     if (bassNote && NOTES[bassNote]) {
       playNote(ctx, musicGain!, NOTES[bassNote], t, stepDuration * 0.9, 'triangle', 0.06);
+    }
+    const arpNote = ARP[i];
+    if (arpNote && NOTES[arpNote]) {
+      playNote(ctx, musicGain!, NOTES[arpNote], t, stepDuration * 0.5, 'square', 0.03);
     }
   }
 
